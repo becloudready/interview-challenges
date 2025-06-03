@@ -20,7 +20,3 @@ The primary goal is to provide a structured and partially automatable way to:
 *   Present realistic Linux administration challenges.
 *   Objectively verify the outcomes of practical tasks.
 *   Cover a range of skills from intermediate to more advanced topics.
-
-## Structure (Conceptual)
-
-While the content was developed iteratively, a good repository structure might be:
