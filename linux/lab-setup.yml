@@ -1,0 +1,87 @@
+- name: Setup Linux Lab for Assessment
+  hosts: candidate_vm
+  become: yes
+  gather_facts: yes
+
+  vars:
+    primary_interface_to_use: "{{ primary_interface | default(ansible_default_ipv4.interface) }}"
+    test_dns_server_bad: "10.254.254.254"
+    original_gateway: "{{ ansible_default_ipv4.gateway if ansible_default_ipv4 is defined else '' }}"
+    local_lan_gateway_for_task4: "192.168.1.254"
+    conflict_port_for_task: 9000
+    ssh_port: 22
+    static_ip_for_task7: "192.168.1.100/24"
+
+  pre_tasks:
+    - name: Install required packages (Ubuntu)
+      ansible.builtin.package:
+        name:
+          - iproute2
+          - dnsutils
+          - netcat-openbsd
+          - ufw
+          - openssh-server
+        state: present
+      when: ansible_facts['os_family'] == "Debian"
+      ignore_errors: yes
+
+    - name: Install required packages (RHEL)
+      ansible.builtin.package:
+        name:
+          - iproute
+          - bind-utils  # provides dig and nslookup
+          - nmap-ncat
+          - firewalld
+          - openssh-server
+        state: present
+      when: ansible_facts['os_family'] == "RedHat"
+      ignore_errors: yes
+
+    - name: Discover primary interface if not overridden
+      ansible.builtin.set_fact:
+        primary_interface_to_use: "{{ ansible_default_ipv4.interface }}"
+      when: primary_interface is not defined and ansible_default_ipv4.interface is defined
+
+    - name: Fail if primary interface cannot be determined
+      ansible.builtin.fail:
+        msg: "Primary network interface could not be determined. Please set 'primary_interface' var."
+      when: primary_interface_to_use is not defined or primary_interface_to_use == ""
+
+  tasks: 
+    - name: Enable ubuntu firewall
+      community.general.ufw:
+        state: enabled
+      when: ansible_os_family == "Debian"
+
+    - name: Enable ssh port
+      community.general.ufw:
+        rule: allow
+        port: 22
+      when: ansible_os_family == "Debian"
+    - name: Copy the server.py from network folder
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/network/server.py"
+        dest: /tmp/server.py 
+        owner: root
+        group: root
+        mode: '0755'
+      tags: copy_server_script
+    - name: Run the server.py script
+      shell: "cd /; nohup python3 /tmp/server.py {{ conflict_port_for_task }} > /dev/null 2>&1 &"
+    - name: block  "{{ conflict_port_for_task }}" port
+      community.general.ufw:
+        rule: deny
+        port: "{{ conflict_port_for_task }}"
+      when: ansible_os_family == "Debian"
+    # - name: "Setup: Break DNS by overwriting /etc/resolv.conf"
+    #   ansible.builtin.copy:
+    #     content: |
+    #       # DNS intentionally misconfigured
+    #       nameserver {{ test_dns_server_bad }}
+    #     dest: /etc/resolv.conf
+    #     owner: root
+    #     group: root
+    #     mode: '0644'
+    #     backup: yes
+  
+   
